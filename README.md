@@ -1,44 +1,28 @@
 # Design with Absence: London Air Quality & Data Missingness Visualizer
 
-A critical urban data visualization platform mapping London air pollution alongside spatial sensor blind spots, Missing Not At Random (MNAR) patterns, and socio-economic deprivation.
+An interactive spatial data visualization project mapping London air pollution alongside physical monitoring blind spots, Missing Not At Random (MNAR) patterns, and socio-economic deprivation.
 
----
+## Overview
 
-## 🌟 Overview
+Environmental mapping interfaces often present continuous, interpolated surfaces that project an impression of complete spatial coverage. **Design with Absence** visualizes both measured concentrations and unmeasured voids—exposing the uneven spatial distribution of physical air quality monitoring stations across London's 33 boroughs.
 
-Standard environmental maps often present continuous, interpolated color surfaces that create an illusion of total coverage. **Design with Absence** renders both what is measured and what remains unmeasured—exposing the uneven spatial distribution of physical air quality monitoring stations across London's 33 boroughs.
+By combining historical London Air Quality Network (LAQN) sensor data with the UK Index of Multiple Deprivation (IMD), this research prototype examines how environmental monitoring infrastructure intersects with socio-spatial equity.
 
-By interfacing historical London Air Quality Network (LAQN) sensor data with the UK Index of Multiple Deprivation (IMD), this tool highlights data blind spots and examines how environmental monitoring infrastructure intersects with socio-spatial inequality.
+## Features
 
----
+- **Split-View Map**: Interactive comparison between borough-level pollutant models and physical sensor monitoring locations.
+- **Uncertainty & MNAR Analytics**: Categorization of boroughs into monitored vs. unmonitored zones to highlight data missingness.
+- **Socio-Economic Analysis**: Scatter plots and matrix clustering comparing IMD deprivation deciles against active monitoring density.
+- **Critical Synthesis Modal**: Contextualized scholarly analysis on spatial sampling bias, data ethics, and urban sensing.
+- **Community Witness Marking**: Counter-mapping tool allowing users to mark localized observations in unmonitored zones.
 
-## ✨ Key Features
+## Tech Stack
 
-- **Split Curtain Dual Map**: Compare interpolated borough-level pollutant models against the dark reality of physical monitoring voids and sensor locations side-by-side.
-- **MNAR & Uncertainty Analytics**: Categorize boroughs into monitored vs. unmonitored dark zones, uncovering data missingness that is Missing Not At Random.
-- **Socio-Economic Correlation**: Interactive scatter plots and matrix clustering connecting IMD deprivation deciles to active sensor counts.
-- **AI Critical Insights**: Gemini-powered critical data analysis contextualizing spatial sampling bias and urban data ethics.
-- **Citizen Witness Marks**: Counter-mapping tool allowing users to place community observation marks on unmonitored zones.
+- **Frontend**: React, TypeScript, Vite, Tailwind CSS, Lucide Icons
+- **Mapping**: Leaflet, CartoDB Basemaps, GeoJSON
+- **Data Visualization**: Recharts, Simple-Statistics
 
----
-
-## 🛠️ Tech Stack
-
-- **Frontend**: React 18, TypeScript, Vite, Tailwind CSS, Lucide Icons
-- **Mapping**: Leaflet, CartoDB Voyager & Dark Matter Tiles, GeoJSON
-- **Charts & Math**: Recharts, Simple-Statistics
-- **AI Integration**: Google Gemini API (`@google/genai`)
-- **Deployment**: Vercel / Node.js Serverless API
-
----
-
-## 🚀 Getting Started
-
-### Prerequisites
-- Node.js (v18+)
-- npm / pnpm / yarn
-
-### Installation
+## Local Development
 
 1. **Clone the repository**:
    ```bash
@@ -51,28 +35,17 @@ By interfacing historical London Air Quality Network (LAQN) sensor data with the
    npm install
    ```
 
-3. **Set Environment Variables**:
-   Create a `.env` file in the root directory:
-   ```env
-   GEMINI_API_KEY=your_gemini_api_key_here
-   ```
-
-4. **Run Development Server**:
+3. **Start development server**:
    ```bash
    npm run dev
    ```
-   Open `http://localhost:3000` (or `http://localhost:5173`) in your browser.
 
----
+## Data Sources
 
-## 📊 Data Sources
-
-- **LAQN (London Air Quality Network)**: Imperial College London air quality station readings ($\text{NO}_2, \text{PM}_{2.5}, \text{PM}_{10}, \text{O}_3$).
+- **LAQN (London Air Quality Network)**: Air quality station readings ($\text{NO}_2, \text{PM}_{2.5}, \text{PM}_{10}, \text{O}_3$).
 - **MHCLG**: UK Index of Multiple Deprivation (IMD 2019).
 - **ONS & GLA**: Greater London Authority borough boundaries and demographic statistics.
 
----
+## License
 
-## 📄 License
-
-Distributed under the MIT License.
+MIT License
