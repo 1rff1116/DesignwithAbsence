@@ -1,0 +1,6 @@
+{
+  "name": "Designing with Absence - London Air Quality Data Mining",
+  "description": "Critical Data Visualization & Analytical Mining of Urban Air Quality Gaps in London (LAQN), featuring correlation clustering, spatial drill-down, and interactive counter-mapping.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
