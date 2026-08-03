@@ -359,7 +359,12 @@ export const MapView: React.FC<MapViewProps> = ({
     ? getRampColor(hoveredPollutantData.val, meta.maxVal)
     : [200, 200, 200];
 
-  const pct = splitRatio * 100;
+  // Effective split ratio calculation
+  // When ratio <= 0.05, collapse fully to 0 (Dark state)
+  // When ratio >= 0.95, expand fully to 1 (Smooth state)
+  const effectiveSplitRatio = splitRatio <= 0.05 ? 0 : (splitRatio >= 0.95 ? 1 : splitRatio);
+  const pct = effectiveSplitRatio * 100;
+  const handleLeftPos = Math.max(2, Math.min(98, pct));
 
   return (
     <div
@@ -371,88 +376,120 @@ export const MapView: React.FC<MapViewProps> = ({
     >
       {/* LEFT MAP WRAPPER (Clipped smooth map with pollutant color blocks for each London Borough) */}
       <div
-        style={{ clipPath: `polygon(0 0, ${pct}% 0, ${pct}% 100%, 0 100%)` }}
-        className="absolute inset-0 w-full h-full z-10"
+        style={{
+          clipPath: `polygon(0 0, ${pct}% 0, ${pct}% 100%, 0 100%)`,
+          opacity: effectiveSplitRatio === 0 ? 0 : 1,
+          visibility: effectiveSplitRatio === 0 ? 'hidden' : 'visible',
+          pointerEvents: effectiveSplitRatio === 0 ? 'none' : 'auto',
+        }}
+        className="absolute inset-0 w-full h-full z-10 transition-opacity duration-300"
       >
         <div ref={leftContainerRef} className="w-full h-full bg-[#141311]" />
       </div>
 
       {/* RIGHT MAP WRAPPER (Clipped dark unmonitored void map with station light pools) */}
       <div
-        style={{ clipPath: `polygon(${pct}% 0, 100% 0, 100% 100%, ${pct}% 100%)` }}
-        className="absolute inset-0 w-full h-full z-20 pointer-events-auto"
+        style={{
+          clipPath: effectiveSplitRatio === 0
+            ? 'polygon(0 0, 100% 0, 100% 100%, 0 100%)'
+            : `polygon(${pct}% 0, 100% 0, 100% 100%, ${pct}% 100%)`,
+          opacity: effectiveSplitRatio === 1 ? 0 : 1,
+          visibility: effectiveSplitRatio === 1 ? 'hidden' : 'visible',
+          pointerEvents: effectiveSplitRatio === 1 ? 'none' : 'auto',
+        }}
+        className="absolute inset-0 w-full h-full z-20 transition-opacity duration-300"
       >
         <div ref={rightContainerRef} className="w-full h-full bg-[#100f0d]" />
       </div>
 
       {/* Split Curtain Drag Handle */}
       <div
-        style={{ left: `${pct}%` }}
+        style={{ left: `${handleLeftPos}%` }}
         className="absolute top-0 bottom-0 w-2 bg-[#e5c158] z-[500] cursor-ew-resize -translate-x-1/2 shadow-2xl hover:bg-[#fff0a0] transition-colors"
         onPointerDown={() => setIsDraggingCurtain(true)}
       >
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-[#1b1916] text-[#e5c158] shadow-2xl border-2 border-[#e5c158] flex items-center justify-center font-bold text-sm hover:scale-110 transition-transform">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-[#1b1916] text-[#e5c158] shadow-2xl border-2 border-[#e5c158] flex items-center justify-center font-bold text-xs hover:scale-110 transition-transform">
           ↔
         </div>
       </div>
 
-      {/* Side View Badges */}
-      <div className="absolute top-4 left-4 z-[450] bg-[#1b1916]/90 text-[#e6e2d8] border border-[#302d26] px-3.5 py-1.5 rounded-full text-xs font-medium shadow-md pointer-events-none backdrop-blur-md flex items-center gap-1.5">
-        <Sparkles className="w-3.5 h-3.5 text-[#e5c158]" />
-        <span>Borough Pollutant Model ({pollutant})</span>
-      </div>
-
-      <div className="absolute top-4 right-4 z-[450] bg-[#e5c158] text-[#141311] font-semibold px-3.5 py-1.5 rounded-full text-xs shadow-md pointer-events-none flex items-center gap-1.5">
-        <MapPin className="w-3.5 h-3.5" />
-        <span>Physical Monitors & Data Void</span>
-      </div>
-
-      {/* Postcode Search & Data Scope Button */}
-      <div className="absolute top-16 left-4 z-[450] flex items-center gap-2">
-        <div className="bg-[#1b1916]/95 border border-[#302d26] p-2 rounded-xl shadow-xl w-64 backdrop-blur-md">
-          <form onSubmit={handleSearchPostcode} className="flex items-center gap-2">
-            <Search className="w-3.5 h-3.5 text-[#9e988a] flex-shrink-0" />
-            <input
-              type="text"
-              placeholder="Search Postcode (SE28, W5, N3)..."
-              value={postcodeQuery}
-              onChange={(e) => setPostcodeQuery(e.target.value)}
-              className="w-full bg-transparent text-xs text-[#f4efe4] placeholder-[#7d786c] outline-none font-medium"
-            />
-            <button
-              type="submit"
-              className="bg-[#e5c158] text-[#141311] text-[11px] font-semibold px-2.5 py-1 rounded-lg hover:bg-[#d4b047] transition-colors"
-            >
-              Go
-            </button>
-          </form>
+      {/* Top Header Overlay Bar (Reflowed to avoid panel overlaps and edge clipping) */}
+      <div className="absolute top-3 left-3 right-3 z-[450] flex flex-wrap items-center justify-between gap-2 pointer-events-none">
+        {/* Active Mode Badge */}
+        <div className="pointer-events-auto">
+          {effectiveSplitRatio === 0 ? (
+            <div className="bg-[#e06c53] text-[#ffffff] font-bold px-3 py-1.5 rounded-full text-xs shadow-lg flex items-center gap-1.5 border border-[#e06c53]/40">
+              <MapPin className="w-3.5 h-3.5" />
+              <span>Physical Monitors & Data Void</span>
+            </div>
+          ) : effectiveSplitRatio === 1 ? (
+            <div className="bg-[#1b1916]/95 text-[#e6e2d8] border border-[#302d26] px-3 py-1.5 rounded-full text-xs font-semibold shadow-lg backdrop-blur-md flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-[#e5c158]" />
+              <span>Borough Pollutant Model ({pollutant})</span>
+            </div>
+          ) : (
+            <div className="bg-[#1b1916]/95 text-[#e6e2d8] border border-[#302d26] px-3 py-1.5 rounded-full text-xs font-semibold shadow-lg backdrop-blur-md flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-[#e5c158]" />
+              <span className="hidden sm:inline">Borough Model</span>
+              <span className="text-[#e5c158] font-bold">↔</span>
+              <span>Monitors & Void</span>
+            </div>
+          )}
         </div>
 
-        <button
-          onClick={() => setShowDataSourcesModal(true)}
-          className="bg-[#1b1916]/95 border border-[#302d26] hover:border-[#e5c158]/50 text-[#e5c158] p-2.5 rounded-xl shadow-xl backdrop-blur-md flex items-center gap-1.5 text-xs font-medium transition-all"
-          title="Data Sources & Scope Info"
-        >
-          <Database className="w-3.5 h-3.5" />
-          <span className="hidden sm:inline">Data Scope Info</span>
-        </button>
+        {/* Postcode Search & Data Scope Controls */}
+        <div className="flex items-center gap-2 pointer-events-auto">
+          <div className="bg-[#1b1916]/95 border border-[#302d26] p-1.5 rounded-xl shadow-lg w-40 sm:w-56 backdrop-blur-md">
+            <form onSubmit={handleSearchPostcode} className="flex items-center gap-1.5">
+              <Search className="w-3.5 h-3.5 text-[#9e988a] flex-shrink-0 ml-1" />
+              <input
+                type="text"
+                placeholder="Postcode (SE28, W5)..."
+                value={postcodeQuery}
+                onChange={(e) => setPostcodeQuery(e.target.value)}
+                className="w-full bg-transparent text-xs text-[#f4efe4] placeholder-[#7d786c] outline-none font-medium min-w-0"
+              />
+              <button
+                type="submit"
+                className="bg-[#e5c158] text-[#141311] text-[10px] font-bold px-2 py-0.5 rounded-lg hover:bg-[#d4b047] transition-colors shrink-0"
+              >
+                Go
+              </button>
+            </form>
+          </div>
+
+          <button
+            onClick={() => setShowDataSourcesModal(true)}
+            className="bg-[#1b1916]/95 border border-[#302d26] hover:border-[#e5c158]/50 text-[#e5c158] px-2.5 py-1.5 rounded-xl shadow-lg backdrop-blur-md flex items-center gap-1 text-xs font-medium transition-all"
+            title="Data Sources & Scope Info"
+          >
+            <Database className="w-3.5 h-3.5" />
+            <span className="hidden md:inline">Data Scope Info</span>
+          </button>
+        </div>
       </div>
 
       {/* Legend Card with Pollutant Concentration Color Scale */}
-      <div className="absolute bottom-4 left-4 z-[450] bg-[#1b1916]/95 border border-[#302d26] p-3.5 rounded-xl shadow-xl max-w-xs text-xs text-[#e6e2d8] backdrop-blur-md">
-        <div className="flex items-center justify-between font-semibold mb-1">
-          <span className="text-[#e5c158]">{meta.label} ({year})</span>
-          <span className="text-[#9e988a] font-normal">{meta.unit}</span>
+      <div className="absolute bottom-3 left-3 z-[450] bg-[#1b1916]/95 border border-[#302d26] p-3 rounded-xl shadow-2xl w-[260px] sm:w-[290px] max-w-[calc(100%-1.5rem)] text-xs text-[#e6e2d8] backdrop-blur-md pointer-events-auto">
+        <div className="flex items-center justify-between font-bold mb-1 gap-1">
+          <span className="text-[#e5c158] font-bold text-xs sm:text-sm whitespace-nowrap">
+            {pollutant === 'PM25' ? 'PM2.5' : pollutant === 'PM10' ? 'PM10' : pollutant === 'NO2' ? 'NO₂' : 'O₃'} ({year})
+          </span>
+          <span className="text-[#9e988a] font-normal text-[10px] shrink-0">{meta.unit}</span>
         </div>
-        <div className="h-3 rounded-full w-full my-2 bg-gradient-to-r from-[#2f9e6e] via-[#8ac96a] via-[#e6d66b] via-[#f0b053] via-[#e88742] to-[#cf4f3a] shadow-inner" />
+        <div className="h-2.5 rounded-full w-full my-1.5 bg-gradient-to-r from-[#2f9e6e] via-[#8ac96a] via-[#e6d66b] via-[#f0b053] via-[#e88742] to-[#cf4f3a] shadow-inner" />
         <div className="flex justify-between text-[10px] text-[#9e988a] font-mono">
           <span>0</span>
           <span className="text-[#8ac96a]">WHO: {meta.whoLimit}</span>
           <span className="text-[#f0b053]">UK: {meta.ukLimit}</span>
           <span className="text-[#cf4f3a]">{meta.maxVal}+</span>
         </div>
-        <p className="text-[10px] text-[#858073] mt-2 italic leading-tight">
-          Left side: Pollutant concentration blocks for London Boroughs. Right side: Physical station light pools & unmonitored dark zones. Drag ↔ curtain handle to compare.
+        <p className="text-[10px] text-[#858073] mt-1.5 italic leading-tight">
+          {effectiveSplitRatio === 0
+            ? 'Dark Void mode: Showing unmonitored residential gaps and active physical station light pools.'
+            : effectiveSplitRatio === 1
+            ? 'Smooth Model mode: Showing interpolated pollutant concentrations across London Boroughs.'
+            : 'Split view: Left shows borough model; Right shows physical monitors & unmonitored void. Drag ↔ curtain to compare.'}
         </p>
       </div>
 
@@ -562,45 +599,45 @@ export const MapView: React.FC<MapViewProps> = ({
             <div className="flex items-center gap-2.5 border-b border-[#2d2922] pb-3">
               <Database className="w-5 h-5 text-[#e5c158]" />
               <h3 className="text-lg font-bold font-serif text-[#e5c158]">
-                数据范围与外部地图说明 (Data Scope & External Maps)
+                Data Scope & External Map Links
               </h3>
             </div>
 
             <div className="space-y-3 text-xs leading-relaxed text-[#ccc6b8]">
               <div className="bg-[#23201a] p-3 rounded-xl border border-[#38332a]">
                 <h4 className="font-semibold text-[#e5c158] text-sm mb-1">
-                  1. 污染范围与行政区覆盖 (Spatial Extent)
+                  1. Spatial Extent & Borough Coverage
                 </h4>
                 <p>
-                  地图精确涵盖<strong>大伦敦 33 个行政区（Boroughs）</strong>。每个行政区内部均按其污染物浓度渲染专属色块，色彩边界完全限定在伦敦行政区划线以内，杜绝任何外部矩形黄色方框。
+                  The map precisely covers all <strong>33 Greater London Boroughs</strong>. Each borough is rendered with pollutant-specific choropleth colors bounded strictly within official administrative boundaries.
                 </p>
                 <p className="mt-1 text-[#a8a295]">
-                  右侧“数据缺失视角”展示的是<strong>物理传感器（Physical Monitoring Stations）分布的极端不均与盲区</strong>。大量居民区无直接传感器，处于 MNAR（非随机缺失）状态。
+                  The right "Data Absence" layer highlights the extreme spatial inequality and blind spots of <strong>physical monitoring stations</strong>, where many residential areas lack active sensors (MNAR).
                 </p>
               </div>
 
               <div className="bg-[#23201a] p-3 rounded-xl border border-[#38332a]">
                 <h4 className="font-semibold text-[#e5c158] text-sm mb-1">
-                  2. 外部地图链接 (Google Maps)
+                  2. External Map View (Google Maps)
                 </h4>
                 <p>
-                  如果您需要深入查看街道级别的建筑细节、交通主干道或街道卫星图，可直接点击悬浮提示框中的“Google Maps ↗”按钮，一键调取对应位置的地图视图。
+                  For street-level building detail, major traffic corridors, or satellite views, click the "Google Maps ↗" button in any borough popup to inspect the exact location.
                 </p>
               </div>
 
               <div className="bg-[#23201a] p-3 rounded-xl border border-[#38332a]">
                 <h4 className="font-semibold text-[#e5c158] text-sm mb-1">
-                  3. 数据来源 (Data Sources)
+                  3. Primary Data Sources
                 </h4>
                 <ul className="list-disc pl-4 space-y-1 text-[#ccc6b8]">
                   <li>
-                    <strong>LAQN (London Air Quality Network)</strong>: 伦敦帝国理工学院运营的历史监测数据 (NO₂, PM₂.₅, PM₁₀, O₃)。
+                    <strong>LAQN (London Air Quality Network)</strong>: Historical station readings operated by Imperial College London (NO₂, PM2.5, PM10, O3).
                   </li>
                   <li>
-                    <strong>UK Ministry of Housing (MHCLG)</strong>: 2019 年多重剥夺指数 (IMD 剥夺分位数 1-10)。
+                    <strong>UK Ministry of Housing (MHCLG)</strong>: Index of Multiple Deprivation 2019 (IMD Deciles 1–10).
                   </li>
                   <li>
-                    <strong>ONS & GLA</strong>: 伦敦各区常住人口与儿童人口统计。
+                    <strong>ONS & GLA</strong>: Office for National Statistics & GLA demographic census datasets.
                   </li>
                 </ul>
               </div>
@@ -611,7 +648,7 @@ export const MapView: React.FC<MapViewProps> = ({
                 onClick={() => setShowDataSourcesModal(false)}
                 className="bg-[#e5c158] text-[#141311] font-semibold px-4 py-1.5 rounded-lg text-xs hover:bg-[#d4b047] transition-colors"
               >
-                关闭 (Close)
+                Close
               </button>
             </div>
           </div>

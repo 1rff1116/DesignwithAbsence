@@ -47,7 +47,7 @@ export const CLUSTER_GROUPS: ClusterGroup[] = [
   {
     id: 1,
     name: 'Monitored Core Hubs',
-    nameCn: '核心高密监测枢纽区',
+    nameCn: 'Central Dense Core',
     color: '#10b981',
     bgHex: 'rgba(16, 185, 129, 0.15)',
     boroughs: ['Westminster', 'Camden', 'Tower Hamlets', 'Greenwich', 'City of London'],
@@ -60,7 +60,7 @@ export const CLUSTER_GROUPS: ClusterGroup[] = [
   {
     id: 2,
     name: 'Roadside Corridor Bias',
-    nameCn: '干道交通偏置区',
+    nameCn: 'Traffic Corridor Biased',
     color: '#3b82f6',
     bgHex: 'rgba(59, 130, 246, 0.15)',
     boroughs: ['Brent', 'Wandsworth', 'Lambeth', 'Merton', 'Hackney', 'Hammersmith and Fulham', 'Southwark', 'Lewisham'],
@@ -73,7 +73,7 @@ export const CLUSTER_GROUPS: ClusterGroup[] = [
   {
     id: 3,
     name: 'Residential Data Deserts',
-    nameCn: '高密居民区数据荒漠',
+    nameCn: 'Residential Data Deserts',
     color: '#ef4444',
     bgHex: 'rgba(239, 68, 68, 0.15)',
     boroughs: ['Barnet', 'Ealing', 'Waltham Forest', 'Redbridge', 'Sutton', 'Harrow', 'Hounslow', 'Barking and Dagenham', 'Newham', 'Bexley', 'Enfield'],
@@ -86,7 +86,7 @@ export const CLUSTER_GROUPS: ClusterGroup[] = [
   {
     id: 4,
     name: 'Historical Attrition & Silent Zones',
-    nameCn: '历史因关停沦为盲区',
+    nameCn: 'Historical Decommissioned Voids',
     color: '#f59e0b',
     bgHex: 'rgba(245, 158, 11, 0.15)',
     boroughs: ['Islington', 'Kingston upon Thames', 'Croydon', 'Bromley', 'Havering', 'Hillingdon', 'Richmond upon Thames', 'Haringey'],

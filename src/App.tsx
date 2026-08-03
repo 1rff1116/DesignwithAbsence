@@ -10,10 +10,12 @@ import { AiCritiqueModal } from './components/AiCritiqueModal';
 import { WitnessCounterMapPanel } from './components/WitnessCounterMapPanel';
 import { FilterState, BoroughGeoFeature } from './types';
 import { LONDON_BOROUGHS_GEOJSON } from './data/londonData';
-import { Layers, Calendar, MapPin, BarChart3, Sparkles } from 'lucide-react';
+import { Layers, Calendar, MapPin, BarChart3, ArrowLeft } from 'lucide-react';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'story' | 'analytics' | 'timeline' | 'witness'>('story');
+  const [isFreeExploration, setIsFreeExploration] = useState(false);
+  const [lastStoryNode, setLastStoryNode] = useState<string>('node-evidence');
   const [currentStoryStage, setCurrentStoryStage] = useState(1);
   const [splitRatio, setSplitRatio] = useState(0.52);
 
@@ -32,7 +34,27 @@ export default function App() {
   const [isAiCritiqueOpen, setIsAiCritiqueOpen] = useState(false);
   const [activeWitnessMarkMode, setActiveWitnessMarkMode] = useState(false);
 
-  // Trigger actions from Storyboard buttons
+  // Navigate to deep-dive view from embedded hand-off button
+  const handleNavigateToDeepDive = (tab: 'analytics' | 'timeline' | 'witness', nodeId: string) => {
+    setLastStoryNode(nodeId);
+    setActiveTab(tab);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Return to exact story narrative node
+  const handleReturnToStory = () => {
+    setActiveTab('story');
+    setTimeout(() => {
+      const el = document.getElementById(lastStoryNode);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } else {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    }, 100);
+  };
+
+  // Trigger actions from Storyboard
   const handleTriggerAction = (actionType: string) => {
     if (actionType === 'RESET_MAP_SMOOTH') {
       setSplitRatio(1.0);
@@ -43,12 +65,12 @@ export default function App() {
       const barnet = LONDON_BOROUGHS_GEOJSON.features.find((f) => f.properties.name === 'Barnet');
       if (barnet) setSelectedBorough(barnet as BoroughGeoFeature);
     } else if (actionType === 'OPEN_TIMELINE') {
-      setActiveTab('timeline');
+      handleNavigateToDeepDive('timeline', 'node-timeline');
     } else if (actionType === 'SEARCH_POSTCODE_SE28') {
       const bexley = LONDON_BOROUGHS_GEOJSON.features.find((f) => f.properties.name === 'Bexley');
       if (bexley) setSelectedBorough(bexley as BoroughGeoFeature);
     } else if (actionType === 'OPEN_WITNESS_TOOL') {
-      setActiveTab('witness');
+      handleNavigateToDeepDive('witness', 'node-witness');
       setActiveWitnessMarkMode(true);
     }
   };
@@ -61,7 +83,7 @@ export default function App() {
   };
 
   const handlePlaceWitnessMark = () => {
-    setActiveTab('witness');
+    handleNavigateToDeepDive('witness', 'node-witness');
   };
 
   return (
@@ -70,6 +92,9 @@ export default function App() {
       <Navbar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
+        isFreeExploration={isFreeExploration}
+        setIsFreeExploration={setIsFreeExploration}
+        onReturnToStory={handleReturnToStory}
         filterState={filterState}
         setFilterState={setFilterState}
         isFilterOpen={isFilterOpen}
@@ -80,44 +105,46 @@ export default function App() {
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 space-y-8">
         
-        {/* TAB 1: STORY MODE */}
-        {activeTab === 'story' && (
-          <div className="space-y-6">
-            <StoryBoardView
-              currentStage={currentStoryStage}
-              setCurrentStage={setCurrentStoryStage}
-              onTriggerAction={handleTriggerAction}
-              filterState={filterState}
-              setFilterState={setFilterState}
-              splitRatio={splitRatio}
-              setSplitRatio={setSplitRatio}
-            />
-
-            <div className="space-y-3">
-              <div className="flex items-center justify-between border-b border-[#282520] pb-2">
-                <h3 className="text-base font-semibold text-[#f4efe4] flex items-center gap-2">
-                  <Layers className="w-4 h-4 text-[#e5c158]" />
-                  <span>Dual-Layer Spatial Absence Map</span>
-                </h3>
-                <div className="text-xs text-[#9e988a]">
-                  Selected Pollutant: <strong className="text-[#e5c158]">{filterState.pollutant}</strong> ({filterState.year})
-                </div>
-              </div>
-
-              <MapView
-                filterState={filterState}
-                setFilterState={setFilterState}
-                splitRatio={splitRatio}
-                setSplitRatio={setSplitRatio}
-                onSelectBorough={(b) => setSelectedBorough(b)}
-                activeWitnessMarkMode={activeWitnessMarkMode}
-                onPlaceWitnessMark={handlePlaceWitnessMark}
-              />
+        {/* Sticky Return Bar for Deep-Dive Views */}
+        {activeTab !== 'story' && (
+          <div className="sticky top-[57px] z-40 bg-[#1d1b17]/95 border border-[#e5c158]/50 backdrop-blur-md px-4 py-3 rounded-2xl flex items-center justify-between shadow-2xl">
+            <div className="flex items-center gap-2.5 text-xs">
+              <span className="w-2.5 h-2.5 rounded-full bg-[#e5c158] animate-pulse" />
+              <span className="text-[#9e988a]">Current Deep Dive:</span>
+              <span className="font-semibold text-[#f4efe4]">
+                {activeTab === 'analytics' && 'Analytics & Clustering'}
+                {activeTab === 'timeline' && 'Station Lifelines'}
+                {activeTab === 'witness' && 'Counter-Mapping'}
+              </span>
             </div>
+            <button
+              onClick={handleReturnToStory}
+              className="bg-[#e5c158] text-[#141311] hover:bg-[#d4b047] font-bold text-xs px-4 py-2 rounded-xl flex items-center gap-2 transition-all shadow-md hover:scale-105"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>← Return to Story</span>
+            </button>
           </div>
         )}
 
-        {/* TAB 2: ANALYTICS & CLUSTERING */}
+        {/* TAB 1: STORY MODE (Scrollytelling Narrative Spine) */}
+        {activeTab === 'story' && (
+          <StoryBoardView
+            currentStage={currentStoryStage}
+            setCurrentStage={setCurrentStoryStage}
+            onTriggerAction={handleTriggerAction}
+            onNavigateToDeepDive={handleNavigateToDeepDive}
+            filterState={filterState}
+            setFilterState={setFilterState}
+            splitRatio={splitRatio}
+            setSplitRatio={setSplitRatio}
+            onSelectBorough={(b) => setSelectedBorough(b)}
+            activeWitnessMarkMode={activeWitnessMarkMode}
+            onPlaceWitnessMark={handlePlaceWitnessMark}
+          />
+        )}
+
+        {/* TAB 2: ANALYTICS & CLUSTERING (Deep Dive) */}
         {activeTab === 'analytics' && (
           <div className="space-y-6">
             <div className="border-b border-[#282520] pb-3">
@@ -153,7 +180,7 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 3: STATION LIFELINES (TIMELINE 1993 - 2024) */}
+        {/* TAB 3: STATION LIFELINES (TIMELINE 1993 - 2024 Deep Dive) */}
         {activeTab === 'timeline' && (
           <div className="space-y-6">
             <div className="border-b border-[#282520] pb-3">
@@ -193,7 +220,7 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 4: PARTICIPATORY COUNTER-MAPPING */}
+        {/* TAB 4: PARTICIPATORY COUNTER-MAPPING (Deep Dive) */}
         {activeTab === 'witness' && (
           <div className="space-y-6">
             <div className="border-b border-[#282520] pb-3">
@@ -284,3 +311,4 @@ export default function App() {
     </div>
   );
 }
+
