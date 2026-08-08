@@ -21,7 +21,7 @@ export const POLLUTANT_METADATA: Record<string, PollutantMeta> = {
     unit: 'µg/m³',
     maxVal: 25,
     whoLimit: 5,
-    ukLimit: 20,
+    ukLimit: 10,
     note: 'annual mean · high health risk fine dust',
     description: 'Penetrates deep into lungs and blood vessels. Highly sparse sensor network in outer residential and high-deprivation boroughs.'
   },

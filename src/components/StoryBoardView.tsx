@@ -92,26 +92,28 @@ export const StoryBoardView: React.FC<StoryBoardViewProps> = ({
   const [activeStep, setActiveStep] = useState<StepKey>('hero');
   const activeStepRef = useRef<StepKey>('hero');
   const isManualOverrideRef = useRef(false);
+  const userSetYearRef = useRef(false); // Once user manually drags year slider, story scroll won't override year
 
   const pollutants: PollutantType[] = ['NO2', 'PM25', 'PM10', 'O3'];
 
   // Apply visual state corresponding to the active step
+  // NOTE: We intentionally do NOT reset pollutant here, so the user's manual selection (e.g. O3) is preserved across scrolling/step changes.
   const applyStepState = useCallback((step: StepKey) => {
     activeStepRef.current = step;
     setActiveStep(step);
 
     if (step === 'hero') {
       setSplitRatio(1.0); // Smooth interpolated surface
-      setFilterState((prev) => ({ ...prev, pollutant: 'PM25', year: 2024 }));
+      if (!userSetYearRef.current) setFilterState((prev) => ({ ...prev, year: 2024 }));
     } else if (step === 'step01') {
       setSplitRatio(0.48); // Split curtain: deprivation & physical sensors
-      setFilterState((prev) => ({ ...prev, pollutant: 'PM25', year: 2024 }));
+      if (!userSetYearRef.current) setFilterState((prev) => ({ ...prev, year: 2024 }));
     } else if (step === 'step02') {
       setSplitRatio(0.5); // Temporal attrition state
-      setFilterState((prev) => ({ ...prev, year: 2012 }));
+      if (!userSetYearRef.current) setFilterState((prev) => ({ ...prev, year: 2008 })); // 2008 = network peak (128 stations)
     } else if (step === 'step03') {
       setSplitRatio(0.05); // Dark void mode with citizen witness marks
-      setFilterState((prev) => ({ ...prev, pollutant: 'PM25' }));
+      // Keep user's current pollutant selection
     }
   }, [setSplitRatio, setFilterState]);
 
@@ -204,6 +206,7 @@ export const StoryBoardView: React.FC<StoryBoardViewProps> = ({
 
   const handleYearChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     isManualOverrideRef.current = true;
+    userSetYearRef.current = true; // User manually selected year — story scroll won't override it anymore
     const y = parseInt(e.target.value, 10);
     setFilterState((prev) => ({ ...prev, year: y }));
     setTimeout(() => { isManualOverrideRef.current = false; }, 3000);
@@ -411,7 +414,7 @@ export const StoryBoardView: React.FC<StoryBoardViewProps> = ({
 
             <div className="space-y-4 text-sm text-[#ccc6b8] leading-relaxed font-sans">
               <p>
-                Air monitoring isn&apos;t something you build once and keep. Drag across 1993–2024 and whole stations blink out — quietly decommissioned as local-council budgets were cut. What disappears isn&apos;t just a machine; it&apos;s the only long-term environmental record some neighbourhoods ever had. The algorithm fills the hole with a historical average, smoothing a real loss into a clean, confident line.
+                In 2008, London&apos;s monitoring network peaked at 128 active stations. By 2024 only about 90 remain — and the two sharpest years of loss were 2023 and 2024. Scrub the timeline and watch stations blink out: what disappears is the only long-term air-quality record some neighbourhoods ever had, quietly smoothed over by an algorithm&apos;s historical average.
               </p>
             </div>
 
@@ -575,7 +578,7 @@ export const StoryBoardView: React.FC<StoryBoardViewProps> = ({
             {/* Active Step Caption Subtitle */}
             <div className="text-xs text-[#ccc6b8] bg-[#141311] p-2.5 rounded-xl border border-[#282520] flex items-center justify-between">
               <span className="italic">
-                {activeStep === 'hero' && 'Seamless surface: algorithmic interpolation projects total coverage.'}
+                {activeStep === 'hero' && "This smooth map is an algorithm's estimate — it fills every area with a calculated guess, making incomplete data look complete."}
                 {activeStep === 'step01' && 'Split view: exposing road bias (64%) and residential gaps (+78%).'}
                 {activeStep === 'step02' && '30-year decline: stations decommissioned due to council funding cuts.'}
                 {activeStep === 'step03' && 'Counter-archive: residents placing witness marks in unmonitored voids.'}

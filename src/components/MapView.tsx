@@ -39,13 +39,36 @@ export const MapView: React.FC<MapViewProps> = ({
 
   const [postcodeQuery, setPostcodeQuery] = useState('');
   const [hoveredBorough, setHoveredBorough] = useState<BoroughGeoFeature | null>(null);
+
+  // Ref to track current pollutant for use in event handlers
+  const currentPollutantRef = useRef(filterState.pollutant);
   const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
   const [isDraggingCurtain, setIsDraggingCurtain] = useState(false);
   const [showDataSourcesModal, setShowDataSourcesModal] = useState(false);
+  const [showLegendInfo, setShowLegendInfo] = useState(false);
+  const legendInfoRef = useRef<HTMLDivElement>(null);
+  const legendInfoButtonRef = useRef<HTMLButtonElement>(null);
 
   const pollutant = filterState.pollutant;
   const year = filterState.year;
   const meta = POLLUTANT_METADATA[pollutant] || POLLUTANT_METADATA.NO2;
+
+  // Click-outside handler for legend info panel
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      // Ignore clicks on the trigger button itself
+      if (legendInfoButtonRef.current && legendInfoButtonRef.current.contains(e.target as Node)) {
+        return;
+      }
+      if (legendInfoRef.current && !legendInfoRef.current.contains(e.target as Node)) {
+        setShowLegendInfo(false);
+      }
+    };
+    if (showLegendInfo) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showLegendInfo]);
 
   // 1. INITIALIZE DUAL SYNCHRONIZED LEAFLET MAPS ONCE
   useEffect(() => {
@@ -93,7 +116,19 @@ export const MapView: React.FC<MapViewProps> = ({
       onEachFeature: (feature, layer) => {
         layer.on({
           mouseover: (e) => {
-            (layer as L.Path).setStyle({ weight: 3.5, color: '#ffd700', fillOpacity: 0.92 });
+            // For O3, keep binary fillColor (blue/gray) during hover
+            if (currentPollutantRef.current === 'O3') {
+              const bFeature = feature as BoroughGeoFeature;
+              const hasO3Monitors = bFeature.properties.monitorsByPollutant['O3'] > 0;
+              (layer as L.Path).setStyle({
+                weight: 3.5,
+                color: '#ffd700',
+                fillColor: hasO3Monitors ? '#5b9bd5' : '#d9d9d9',
+                fillOpacity: 0.92,
+              });
+            } else {
+              (layer as L.Path).setStyle({ weight: 3.5, color: '#ffd700', fillOpacity: 0.92 });
+            }
             setHoveredBorough(feature as BoroughGeoFeature);
             setHoverPos({ x: e.containerPoint.x, y: e.containerPoint.y });
           },
@@ -101,7 +136,22 @@ export const MapView: React.FC<MapViewProps> = ({
             setHoverPos({ x: e.containerPoint.x, y: e.containerPoint.y });
           },
           mouseout: () => {
-            if (leftGeoJsonRef.current) leftGeoJsonRef.current.resetStyle(layer as L.Path);
+            if (leftGeoJsonRef.current) {
+              // For O3, manually restore binary style instead of resetStyle
+              if (currentPollutantRef.current === 'O3') {
+                const bFeature = feature as BoroughGeoFeature;
+                const hasO3Monitors = bFeature.properties.monitorsByPollutant['O3'] > 0;
+                (layer as L.Path).setStyle({
+                  color: '#ffffff',
+                  weight: 2,
+                  opacity: 0.95,
+                  fillColor: hasO3Monitors ? '#5b9bd5' : '#d9d9d9',
+                  fillOpacity: 0.8,
+                });
+              } else {
+                leftGeoJsonRef.current.resetStyle(layer as L.Path);
+              }
+            }
             setHoveredBorough(null);
             setHoverPos(null);
           },
@@ -212,6 +262,9 @@ export const MapView: React.FC<MapViewProps> = ({
   useEffect(() => {
     if (!mapLeftRef.current || !mapRightRef.current) return;
 
+    // Update pollutant ref for event handlers
+    currentPollutantRef.current = pollutant;
+
     // Update Left Borough Polygons (Vivid pollutant color blocks & filter opacity)
     if (leftGeoJsonRef.current) {
       leftGeoJsonRef.current.setStyle((feature: any) => {
@@ -225,9 +278,6 @@ export const MapView: React.FC<MapViewProps> = ({
 
         const isImdMatch = imd >= filterState.imdRange[0] && imd <= filterState.imdRange[1];
 
-        const bData = getBoroughPollutantValue(bFeature, pollutant, year, LAQN_STATIONS);
-        const rgb = getRampColor(bData.val, meta.maxVal);
-
         if (!isCoverageMatch || !isImdMatch) {
           return {
             color: 'rgba(200, 200, 200, 0.4)',
@@ -236,6 +286,21 @@ export const MapView: React.FC<MapViewProps> = ({
             fillOpacity: 0.25,
           };
         }
+
+        // O3 special handling: binary coverage coloring (has monitors vs no monitors)
+        if (pollutant === 'O3') {
+          const hasO3Monitors = bFeature.properties.monitorsByPollutant['O3'] > 0;
+          return {
+            color: '#ffffff',
+            weight: 2,
+            opacity: 0.95,
+            fillColor: hasO3Monitors ? '#5b9bd5' : '#d9d9d9', // Blue = covered, Gray = not covered
+            fillOpacity: 0.8,
+          };
+        }
+
+        const bData = getBoroughPollutantValue(bFeature, pollutant, year, LAQN_STATIONS);
+        const rgb = getRampColor(bData.val, meta.maxVal);
 
         return {
           color: '#ffffff',
@@ -268,18 +333,31 @@ export const MapView: React.FC<MapViewProps> = ({
     if (stationsGroupRef.current) {
       stationsGroupRef.current.clearLayers();
 
-      const activeStations = LAQN_STATIONS.filter(
-        (s) =>
-          s.readings[pollutant] !== null &&
-          s.readings[pollutant] !== undefined &&
-          s.activeYears[0] <= year &&
-          s.activeYears[1] >= year &&
-          (filterState.stationTypes.length === 0 || filterState.stationTypes.includes(s.type))
-      );
+      // O3 special handling: show stations that monitor O3 even if readings.O3 is null
+      const activeStations = pollutant === 'O3'
+        ? LAQN_STATIONS.filter(
+            (s) =>
+              s.activeYears[0] <= year &&
+              s.activeYears[1] >= year &&
+              (filterState.stationTypes.length === 0 || filterState.stationTypes.includes(s.type)) &&
+              // Check if this station monitors O3 (based on borough monitorsByPollutant > 0 or station has O3 in its capabilities)
+              // Since readings.O3 is always null, we rely on monitorsByPollutant data
+              LONDON_BOROUGHS_GEOJSON.features.some(
+                (f: any) =>
+                  f.properties.name.toLowerCase() === s.boro.toLowerCase() &&
+                  f.properties.monitorsByPollutant['O3'] > 0
+              )
+          )
+        : LAQN_STATIONS.filter(
+            (s) =>
+              s.readings[pollutant] !== null &&
+              s.readings[pollutant] !== undefined &&
+              s.activeYears[0] <= year &&
+              s.activeYears[1] >= year &&
+              (filterState.stationTypes.length === 0 || filterState.stationTypes.includes(s.type))
+          );
 
       activeStations.forEach((st) => {
-        const val = st.readings[pollutant] || 0;
-
         // Outer glowing light circle pool
         const glowCircle = L.circle([st.lat, st.lon], {
           radius: 1800,
@@ -299,10 +377,12 @@ export const MapView: React.FC<MapViewProps> = ({
           fillOpacity: 1,
         });
 
-        coreMarker.bindTooltip(
-          `<div class="p-1 font-sans"><strong class="text-[#e5c158]">${st.name}</strong><br/>${pollutant} (${year}): <strong>${val} ${meta.unit}</strong><br/><span class="text-[10px] text-gray-300">${st.type}</span></div>`,
-          { direction: 'top', className: 'custom-leaflet-tooltip' }
-        );
+        // O3: show coverage note instead of concentration value
+        const tooltipContent = pollutant === 'O3'
+          ? `<div class="p-1 font-sans"><strong class="text-[#e5c158]">${st.name}</strong><br/><span class="text-[#5b9bd5]">O₃ · assessed on an 8-hour basis · no annual mean</span><br/><span class="text-[10px] text-gray-300">${st.type}</span></div>`
+          : `<div class="p-1 font-sans"><strong class="text-[#e5c158]">${st.name}</strong><br/>${pollutant} (${year}): <strong>${st.readings[pollutant] || 0} ${meta.unit}</strong><br/><span class="text-[10px] text-gray-300">${st.type}</span></div>`;
+
+        coreMarker.bindTooltip(tooltipContent, { direction: 'top', className: 'custom-leaflet-tooltip' });
 
         stationsGroupRef.current?.addLayer(glowCircle);
         stationsGroupRef.current?.addLayer(coreMarker);
@@ -423,16 +503,22 @@ export const MapView: React.FC<MapViewProps> = ({
               <span>Physical Monitors & Data Void</span>
             </div>
           ) : effectiveSplitRatio === 1 ? (
-            <div className="bg-[#1b1916]/95 text-[#e6e2d8] border border-[#302d26] px-3 py-1.5 rounded-full text-xs font-semibold shadow-lg backdrop-blur-md flex items-center gap-1.5">
+            <div
+              className="bg-[#1b1916]/95 text-[#e6e2d8] border border-[#302d26] px-3 py-1.5 rounded-full text-xs font-semibold shadow-lg backdrop-blur-md flex items-center gap-1.5 cursor-help"
+              title="Left: a smooth estimate produced by an algorithm. Right: where real monitoring stations actually are — and the dark areas where there is no monitoring at all."
+            >
               <Sparkles className="w-3.5 h-3.5 text-[#e5c158]" />
-              <span>Borough Pollutant Model ({pollutant})</span>
+              <span>Modelled estimate ({pollutant})</span>
             </div>
           ) : (
-            <div className="bg-[#1b1916]/95 text-[#e6e2d8] border border-[#302d26] px-3 py-1.5 rounded-full text-xs font-semibold shadow-lg backdrop-blur-md flex items-center gap-1.5">
+            <div
+              className="bg-[#1b1916]/95 text-[#e6e2d8] border border-[#302d26] px-3 py-1.5 rounded-full text-xs font-semibold shadow-lg backdrop-blur-md flex items-center gap-1.5 cursor-help"
+              title="Left: a smooth estimate produced by an algorithm. Right: where real monitoring stations actually are — and the dark areas where there is no monitoring at all."
+            >
               <Sparkles className="w-3.5 h-3.5 text-[#e5c158]" />
-              <span className="hidden sm:inline">Borough Model</span>
+              <span className="hidden sm:inline">Modelled estimate</span>
               <span className="text-[#e5c158] font-bold">↔</span>
-              <span>Monitors & Void</span>
+              <span>Real monitors & gaps</span>
             </div>
           )}
         </div>
@@ -470,27 +556,90 @@ export const MapView: React.FC<MapViewProps> = ({
       </div>
 
       {/* Legend Card with Pollutant Concentration Color Scale */}
-      <div className="absolute bottom-3 left-3 z-[450] bg-[#1b1916]/95 border border-[#302d26] p-3 rounded-xl shadow-2xl w-[260px] sm:w-[290px] max-w-[calc(100%-1.5rem)] text-xs text-[#e6e2d8] backdrop-blur-md pointer-events-auto">
-        <div className="flex items-center justify-between font-bold mb-1 gap-1">
-          <span className="text-[#e5c158] font-bold text-xs sm:text-sm whitespace-nowrap">
-            {pollutant === 'PM25' ? 'PM2.5' : pollutant === 'PM10' ? 'PM10' : pollutant === 'NO2' ? 'NO₂' : 'O₃'} ({year})
-          </span>
-          <span className="text-[#9e988a] font-normal text-[10px] shrink-0">{meta.unit}</span>
-        </div>
-        <div className="h-2.5 rounded-full w-full my-1.5 bg-gradient-to-r from-[#2f9e6e] via-[#8ac96a] via-[#e6d66b] via-[#f0b053] via-[#e88742] to-[#cf4f3a] shadow-inner" />
-        <div className="flex justify-between text-[10px] text-[#9e988a] font-mono">
-          <span>0</span>
-          <span className="text-[#8ac96a]">WHO: {meta.whoLimit}</span>
-          <span className="text-[#f0b053]">UK: {meta.ukLimit}</span>
-          <span className="text-[#cf4f3a]">{meta.maxVal}+</span>
-        </div>
-        <p className="text-[10px] text-[#858073] mt-1.5 italic leading-tight">
-          {effectiveSplitRatio === 0
-            ? 'Dark Void mode: Showing unmonitored residential gaps and active physical station light pools.'
-            : effectiveSplitRatio === 1
-            ? 'Smooth Model mode: Showing interpolated pollutant concentrations across London Boroughs.'
-            : 'Split view: Left shows borough model; Right shows physical monitors & unmonitored void. Drag ↔ curtain to compare.'}
-        </p>
+      <div className={`absolute bottom-3 left-3 ${showLegendInfo ? 'z-[550]' : 'z-[450]'} bg-[#1b1916]/95 border border-[#302d26] p-3 rounded-xl shadow-2xl w-[260px] sm:w-[290px] max-w-[calc(100%-1.5rem)] text-xs text-[#e6e2d8] backdrop-blur-md pointer-events-auto box-border`}>
+        {pollutant === 'O3' ? (
+          // O3 special legend: coverage only, no concentration
+          <>
+            <div className="font-bold mb-2">
+              <span className="text-[#5b9bd5] font-bold text-xs sm:text-sm break-words leading-snug block">
+                O₃ · assessed on an 8-hour basis · no annual mean
+              </span>
+            </div>
+            <div className="flex items-center gap-3 my-2">
+              <div className="flex items-center gap-1.5">
+                <span className="w-4 h-4 rounded bg-[#5b9bd5]" />
+                <span className="text-[11px] text-[#ccc6b8]">Has O₃ monitor</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-4 h-4 rounded bg-[#d9d9d9]" />
+                <span className="text-[11px] text-[#ccc6b8]">No O₃ monitor</span>
+              </div>
+            </div>
+            <p className="text-[10px] text-[#858073] mt-1.5 italic leading-tight">
+              O₃ is assessed on an 8-hour running mean, so no annual value is shown. The map shows only whether each borough has an active O₃ monitor.
+            </p>
+          </>
+        ) : (
+          // Normal pollutant legend with concentration color scale
+          <>
+            <div className="flex items-center justify-between font-bold mb-1 gap-1">
+              <span className="text-[#e5c158] font-bold text-xs sm:text-sm whitespace-nowrap flex items-center gap-1.5 relative">
+                {pollutant === 'PM25' ? 'PM2.5' : pollutant === 'PM10' ? 'PM10' : 'NO₂'} ({year})
+                <button
+                  ref={legendInfoButtonRef}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowLegendInfo(!showLegendInfo);
+                  }}
+                  className="text-[#9e988a] hover:text-[#e5c158] hover:bg-[#282520] cursor-pointer text-sm w-5 h-5 flex items-center justify-center rounded-full transition-all"
+                  aria-label="Colour scale explanation"
+                >
+                  ⓘ
+                </button>
+                {/* Legend Info Panel */}
+                {showLegendInfo && (
+                  <div
+                    ref={legendInfoRef}
+                    className="absolute left-0 bottom-full mb-2 w-[320px] sm:w-[360px] max-w-[calc(100vw-1.5rem)] bg-[#1b2530] border border-[#3a4a5a] rounded-xl p-4 shadow-2xl z-[600] text-left break-words"
+                  >
+                    <h4 className="text-[#e5c158] font-bold text-xs mb-2.5">
+                      Colour Scale Explained
+                    </h4>
+                    <p className="text-[#ccc6b8] text-[11px] leading-relaxed mb-2.5 font-normal whitespace-normal">
+                      The colour shows the annual-mean concentration (µg/m³). Two reference marks are shown:
+                    </p>
+                    <ul className="space-y-2 text-[11px] font-normal">
+                      <li className="text-[#ccc6b8] leading-relaxed whitespace-normal">
+                        <span className="text-[#e5c158] font-semibold">WHO</span> — the World Health Organization's 2021 health-based guideline (advisory, not legally binding; the UK has not adopted it).
+                      </li>
+                      <li className="text-[#ccc6b8] leading-relaxed whitespace-normal">
+                        <span className="text-[#e5c158] font-semibold">UK</span> — the UK's own standard. For NO₂ and PM10 this is a legally binding limit of 40 µg/m³. For PM2.5 it is a legally binding target of 10 µg/m³ to be met across England by 2040.
+                      </li>
+                    </ul>
+                    <p className="text-[#9e988a] text-[10px] mt-2.5 italic font-normal whitespace-normal">
+                      Colours past a mark mean the air exceeds that standard.
+                    </p>
+                  </div>
+                )}
+              </span>
+              <span className="text-[#9e988a] font-normal text-[10px] shrink-0">{meta.unit}</span>
+            </div>
+            <div className="h-2.5 rounded-full w-full my-1.5 bg-gradient-to-r from-[#2f9e6e] via-[#8ac96a] via-[#e6d66b] via-[#f0b053] via-[#e88742] to-[#cf4f3a] shadow-inner" />
+            <div className="flex justify-between text-[10px] text-[#9e988a] font-mono">
+              <span>0</span>
+              <span className="text-[#8ac96a]">WHO: {meta.whoLimit}</span>
+              <span className="text-[#f0b053]">UK: {meta.ukLimit}</span>
+              <span className="text-[#cf4f3a]">{meta.maxVal}+</span>
+            </div>
+            <p className="text-[10px] text-[#858073] mt-1.5 italic leading-tight">
+              {effectiveSplitRatio === 0
+                ? 'Dark Void mode: Showing unmonitored residential gaps and active physical station light pools.'
+                : effectiveSplitRatio === 1
+                ? 'Smooth Model mode: Showing interpolated pollutant concentrations across London Boroughs.'
+                : 'Split view: Left shows borough model; Right shows physical monitors & unmonitored void. Drag ↔ curtain to compare.'}
+            </p>
+          </>
+        )}
       </div>
 
       {/* Hover Tooltip with Google Maps Link */}
@@ -504,25 +653,43 @@ export const MapView: React.FC<MapViewProps> = ({
         >
           <div className="flex items-center justify-between font-semibold border-b border-[#2d2922] pb-2 mb-2">
             <span className="text-sm text-[#e5c158] font-serif">{hoveredBorough.properties.name}</span>
-            <span className="text-[10px] bg-[#282520] px-2 py-0.5 rounded text-[#a8a295]">
-              IMD Decile {hoveredBorough.properties.imdDecile}/10
+            <span
+              className="text-[10px] bg-[#282520] px-2 py-0.5 rounded text-[#a8a295] cursor-help"
+              title="IMD = Index of Multiple Deprivation, England's official measure of relative poverty. 1 = most deprived, 10 = least deprived."
+            >
+              IMD Decile {hoveredBorough.properties.imdDecile}/10 <span className="text-[#9e988a]">ⓘ</span>
             </span>
           </div>
 
           <div className="space-y-2 text-[11px] text-[#ccc6b8]">
-            {/* Pollutant Concentration Badge */}
-            <div className="flex items-center justify-between bg-[#23201a] p-2 rounded-lg border border-[#38332a]">
-              <span className="font-medium text-[#a8a295]">{pollutant} ({year}):</span>
-              <div className="flex items-center gap-1.5 font-bold text-sm">
-                <span
-                  className="w-3 h-3 rounded-full inline-block shadow-sm"
-                  style={{ backgroundColor: `rgb(${hoveredColorRgb[0]}, ${hoveredColorRgb[1]}, ${hoveredColorRgb[2]})` }}
-                />
-                <span style={{ color: `rgb(${hoveredColorRgb[0]}, ${hoveredColorRgb[1]}, ${hoveredColorRgb[2]})` }}>
-                  {hoveredPollutantData.val} {meta.unit}
-                </span>
+            {/* Pollutant Concentration Badge - O3 shows coverage status instead */}
+            {pollutant === 'O3' ? (
+              <div className="flex items-center justify-between bg-[#23201a] p-2 rounded-lg border border-[#38332a]">
+                <span className="font-medium text-[#a8a295]">O₃ coverage:</span>
+                <div className="flex items-center gap-1.5 font-bold text-sm">
+                  <span
+                    className="w-3 h-3 rounded inline-block shadow-sm"
+                    style={{ backgroundColor: hoveredPollutantData.monitorCount > 0 ? '#5b9bd5' : '#d9d9d9' }}
+                  />
+                  <span style={{ color: hoveredPollutantData.monitorCount > 0 ? '#5b9bd5' : '#9e988a' }}>
+                    {hoveredPollutantData.monitorCount > 0 ? 'Has monitor' : 'No monitor'}
+                  </span>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="flex items-center justify-between bg-[#23201a] p-2 rounded-lg border border-[#38332a]">
+                <span className="font-medium text-[#a8a295]">{pollutant} ({year}):</span>
+                <div className="flex items-center gap-1.5 font-bold text-sm">
+                  <span
+                    className="w-3 h-3 rounded-full inline-block shadow-sm"
+                    style={{ backgroundColor: `rgb(${hoveredColorRgb[0]}, ${hoveredColorRgb[1]}, ${hoveredColorRgb[2]})` }}
+                  />
+                  <span style={{ color: `rgb(${hoveredColorRgb[0]}, ${hoveredColorRgb[1]}, ${hoveredColorRgb[2]})` }}>
+                    {hoveredPollutantData.val} {meta.unit}
+                  </span>
+                </div>
+              </div>
+            )}
 
             <div className="flex justify-between">
               <span>Population:</span>
@@ -562,16 +729,32 @@ export const MapView: React.FC<MapViewProps> = ({
               </a>
             </div>
 
-            {hoveredPollutantData.monitorCount === 0 ? (
-              <div className="bg-[#2d1b18] border border-[#592620] p-2 rounded-lg text-[10px] text-[#f29b8a] mt-1">
-                <AlertCircle className="w-3.5 h-3.5 inline mr-1 text-[#e06c53] flex-shrink-0" />
-                <strong>Unmeasured Dark Zone (MNAR):</strong> Zero active direct sensors. Concentration ({hoveredPollutantData.val} {meta.unit}) is estimated via spatial IDW model.
-              </div>
+            {pollutant === 'O3' ? (
+              // O3 special status: coverage info only
+              hoveredPollutantData.monitorCount === 0 ? (
+                <div className="bg-[#2d2d2d] border border-[#4a4a4a] p-2 rounded-lg text-[10px] text-[#b0b0b0] mt-1">
+                  <AlertCircle className="w-3.5 h-3.5 inline mr-1 text-[#9e988a] flex-shrink-0" />
+                  <strong>No O₃ monitor coverage.</strong> O₃ is assessed on an 8-hour basis, no annual data.
+                </div>
+              ) : (
+                <div className="bg-[#1b2530] border border-[#2e4255] p-2 rounded-lg text-[10px] text-[#a1c4d9] mt-1">
+                  <Info className="w-3.5 h-3.5 inline mr-1 text-[#5b9bd5] flex-shrink-0" />
+                  This borough has O₃ monitor coverage. O₃ is assessed on an 8-hour basis, no annual data.
+                </div>
+              )
             ) : (
-              <div className="bg-[#1b281d] border border-[#2e4732] p-2 rounded-lg text-[10px] text-[#a1d99b] mt-1">
-                <Info className="w-3.5 h-3.5 inline mr-1 text-[#7ebf69] flex-shrink-0" />
-                Direct physical monitoring station active in this borough.
-              </div>
+              // Normal pollutant status
+              hoveredPollutantData.monitorCount === 0 ? (
+                <div className="bg-[#2d1b18] border border-[#592620] p-2 rounded-lg text-[10px] text-[#f29b8a] mt-1">
+                  <AlertCircle className="w-3.5 h-3.5 inline mr-1 text-[#e06c53] flex-shrink-0" />
+                  <strong>Unmeasured Dark Zone (MNAR):</strong> Zero active direct sensors. Concentration ({hoveredPollutantData.val} {meta.unit}) is estimated via spatial IDW model.
+                </div>
+              ) : (
+                <div className="bg-[#1b281d] border border-[#2e4732] p-2 rounded-lg text-[10px] text-[#a1d99b] mt-1">
+                  <Info className="w-3.5 h-3.5 inline mr-1 text-[#7ebf69] flex-shrink-0" />
+                  Direct physical monitoring station active in this borough.
+                </div>
+              )
             )}
           </div>
         </div>
